@@ -223,6 +223,22 @@ std::any visitor::visitBinaryExpression(sysy_parser::BinaryExpressionContext *ct
          cur_ir_cnt = m_ir_cnt++;
          common_type = variable::TYPE::INT32;
        }},
+      {"&&",
+       [&] {
+         pl("%{} = and i32 %{}, %{}", cur_ir_cnt, new_ir_cnt_l, new_ir_cnt_r);
+         pl("%{} = icmp ne i32 %{}, 0", cur_ir_cnt + 1, cur_ir_cnt);
+         pl("%{} = sext i1 %{} to i32", cur_ir_cnt + 2, cur_ir_cnt + 1);
+         cur_ir_cnt += 2, m_ir_cnt += 2;
+         common_type = variable::TYPE::INT32;
+       }},
+      {"||",
+       [&] {
+         pl("%{} = or i32 %{}, %{}", cur_ir_cnt, new_ir_cnt_l, new_ir_cnt_r);
+         pl("%{} = icmp ne i32 %{}, 0", cur_ir_cnt + 1, cur_ir_cnt);
+         pl("%{} = sext i1 %{} to i32", cur_ir_cnt + 2, cur_ir_cnt + 1);
+         cur_ir_cnt += 2, m_ir_cnt += 2;
+         common_type = variable::TYPE::INT32;
+       }},
   };
 
   std::unordered_map<std::string, std::function<void()>> operations_float{
@@ -241,8 +257,6 @@ std::any visitor::visitBinaryExpression(sysy_parser::BinaryExpressionContext *ct
        [&] {
          pl("%{} = fcmp ogt float %{}, %{}", cur_ir_cnt, new_ir_cnt_l, new_ir_cnt_r);
          pl("%{} = sext i1 %{} to i32", cur_ir_cnt + 1, cur_ir_cnt);
-         cur_ir_cnt = m_ir_cnt++;
-         common_type = variable::TYPE::INT32;
          cur_ir_cnt = m_ir_cnt++;
          common_type = variable::TYPE::INT32;
        }},
@@ -272,6 +286,23 @@ std::any visitor::visitBinaryExpression(sysy_parser::BinaryExpressionContext *ct
          pl("%{} = fcmp one float %{}, %{}", cur_ir_cnt, new_ir_cnt_l, new_ir_cnt_r);
          pl("%{} = sext i1 %{} to i32", cur_ir_cnt + 1, cur_ir_cnt);
          cur_ir_cnt = m_ir_cnt++;
+         common_type = variable::TYPE::INT32;
+       }},
+      {"&&",
+       [&] {
+         pl("%{} = fcmp one float %{}, 0", cur_ir_cnt, new_ir_cnt_l);
+         pl("%{} = fcmp one float %{}, 0", cur_ir_cnt + 1, new_ir_cnt_r);
+         pl("%{} = and i1 %{}, %{}", cur_ir_cnt + 2, cur_ir_cnt, cur_ir_cnt + 1);
+         pl("%{} = sext i1 %{} to i32", cur_ir_cnt + 3, cur_ir_cnt + 2);
+         cur_ir_cnt += 3, m_ir_cnt += 3;
+         common_type = variable::TYPE::INT32;
+       }},
+      {"||",
+       [&] {
+         pl("%{} = or i32 %{}, %{}", cur_ir_cnt, new_ir_cnt_l, new_ir_cnt_r);
+         pl("%{} = icmp ne i32 %{}, 0", cur_ir_cnt + 1, cur_ir_cnt);
+         pl("%{} = sext i1 %{} to i32", cur_ir_cnt + 2, cur_ir_cnt + 1);
+         cur_ir_cnt += 2, m_ir_cnt += 2;
          common_type = variable::TYPE::INT32;
        }},
   };
