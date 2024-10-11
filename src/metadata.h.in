@@ -1,0 +1,12 @@
+#ifndef METADATA_H_IN
+#define METADATA_H_IN
+
+#include <string>
+
+struct metadata {
+  static constexpr const std::string name{"${PROGRAM_NAME}"};
+  static constexpr const std::string version{"${VERSION}"};
+  static constexpr const std::string version_build{"${VERSION_BUILD}"};
+};
+
+#endif // METADATA_H_IN
