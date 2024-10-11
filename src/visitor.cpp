@@ -104,6 +104,8 @@ std::any visitor::visitIntegerConstantExpression(sysy_parser::IntegerConstantExp
   return expression{m_ir_cnt - 1, variable::TYPE::INT32};
 }
 
+std::any visitor::visitBraceExpression(sysy_parser::BraceExpressionContext *ctx) { return visit(ctx->expression()); }
+
 std::any visitor::visitUnaryExpression(sysy_parser::UnaryExpressionContext *ctx) {
   auto op{ctx->op->getText()};
 

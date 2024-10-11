@@ -39,6 +39,7 @@ public:
 
   virtual std::any visitFunctionDefinition(sysy_parser::FunctionDefinitionContext *ctx) override;
   virtual std::any visitTerminal(antlr4::tree::terminal_node *ctx) override;
+  virtual std::any visitBraceExpression(sysy_parser::BraceExpressionContext *ctx) override;
   virtual std::any visitUnaryExpression(sysy_parser::UnaryExpressionContext *ctx) override;
   virtual std::any visitIntegerConstantExpression(sysy_parser::IntegerConstantExpressionContext *ctx) override;
   virtual std::any visitBinaryExpression(sysy_parser::BinaryExpressionContext *ctx) override;
