@@ -95,11 +95,3 @@ target("antlr4_runtime", function()
 
     add_files("antlr4_runtime.cppm", { public = true })
 end)
-
-target("boost_ut", function()
-    set_kind("static")
-    set_default(false)
-    add_defines("__cpp_modules")
-
-    add_files("boost_ut.cppm", { public = true })
-end)
