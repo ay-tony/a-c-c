@@ -104,6 +104,11 @@ std::any visitor::visitIntegerConstantExpression(sysy_parser::IntegerConstantExp
   return expression{m_ir_cnt - 1, variable::TYPE::INT32};
 }
 
+std::any visitor::visitFloatingConstantExpression(sysy_parser::FloatingConstantExpressionContext *ctx) {
+  pl("%{} = fadd float 0., {:e}", m_ir_cnt++, std::any_cast<float>(visit(ctx->FLOATING_CONSTANT())));
+  return expression{m_ir_cnt - 1, variable::TYPE::FLOAT};
+}
+
 std::any visitor::visitBraceExpression(sysy_parser::BraceExpressionContext *ctx) { return visit(ctx->expression()); }
 
 std::any visitor::visitUnaryExpression(sysy_parser::UnaryExpressionContext *ctx) {

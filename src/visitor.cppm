@@ -42,6 +42,7 @@ public:
   virtual std::any visitBraceExpression(sysy_parser::BraceExpressionContext *ctx) override;
   virtual std::any visitUnaryExpression(sysy_parser::UnaryExpressionContext *ctx) override;
   virtual std::any visitIntegerConstantExpression(sysy_parser::IntegerConstantExpressionContext *ctx) override;
+  virtual std::any visitFloatingConstantExpression(sysy_parser::FloatingConstantExpressionContext *ctx) override;
   virtual std::any visitBinaryExpression(sysy_parser::BinaryExpressionContext *ctx) override;
   virtual std::any visitReturnStatement(sysy_parser::ReturnStatementContext *ctx) override;
 };
