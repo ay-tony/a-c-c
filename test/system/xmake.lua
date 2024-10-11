@@ -1,8 +1,6 @@
 for _, file in ipairs(os.files("testcases/*/*.c")) do
     local names = {}
-    for name in string.gmatch(file, "([^/]+)") do
-        names[#names + 1] = name
-    end
+    for name in string.gmatch(file, "([^/]+)") do names[#names + 1] = name end
     local target_name = "system_test." .. names[#names - 1] .. "." .. path.basename(file)
     target(target_name, function()
         set_kind("phony")
