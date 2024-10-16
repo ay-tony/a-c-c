@@ -26,7 +26,11 @@ private:
         case variable::TYPE::INT32:
           return std::format("{}", std::get<std::int32_t>(value));
         case variable::TYPE::FLOAT:
-          return std::format("{:e}", std::get<float>(value));
+          union union_val {
+            std::uint64_t val_i;
+            double val_f;
+          } tmp_value{.val_f = std::get<float>(value)};
+          return std::format("0x{:x}", tmp_value.val_i);
         }
       else
         return std::format("%{}", ir_cnt);
