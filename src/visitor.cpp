@@ -35,36 +35,74 @@ function visitor::resolve_function(const std::string &name) {
   throw std::system_error(internal_error::invalid_function_name, std::format("{}", name));
 }
 
-void visitor::convert_expression(variable::TYPE from_type, variable::ir_cnt_t from_ir_cnt, variable::TYPE to_type,
-                                 variable::ir_cnt_t to_ir_cnt) {
-  auto from_type_name = variable::to_string(from_type);
-  auto to_type_name = variable::to_string(to_type);
-  switch (from_type) {
-  case variable::TYPE::INT32:
-    switch (to_type) {
-    case variable::TYPE::INT32:
-      pl("%{} = %{}", to_ir_cnt, from_ir_cnt);
-      return;
-    case variable::TYPE::FLOAT:
-      pl("%{} = sitofp {} %{} to {}", to_ir_cnt, from_type_name, from_ir_cnt, to_type_name);
-      return;
-    }
-  case variable::TYPE::FLOAT:
-    switch (to_type) {
-    case variable::TYPE::INT32:
-      pl("%{} = fptosi {} %{} to {}", to_ir_cnt, from_type_name, from_ir_cnt, to_type_name);
-      return;
-    case variable::TYPE::FLOAT:
-      pl("%{} = %{}", to_ir_cnt, from_ir_cnt);
-      return;
-    }
+visitor::expression visitor::expression_cast(expression raw_expression, variable::TYPE target_type, bool to_non_const) {
+  auto result_expression{expression{}};
+  std::map<std::pair<variable::TYPE, variable::TYPE>, std::function<void()>> operations[2]{
+      {
+          {{variable::TYPE::INT32, variable::TYPE::INT32}, [&] { result_expression = raw_expression; }},
+          {{variable::TYPE::INT32, variable::TYPE::FLOAT},
+           [&] {
+             pl("%{} = sitofp {} %{} to {}", new_ir_cnt(), "i32", raw_expression.ir_cnt, "float");
+             result_expression = {false, variable::TYPE::FLOAT, m_ir_cnt, {}};
+           }},
+          {{variable::TYPE::FLOAT, variable::TYPE::INT32},
+           [&] {
+             pl("%{} = fptosi {} %{} to {}", new_ir_cnt(), "float", raw_expression.ir_cnt, "i32");
+             result_expression = {false, variable::TYPE::FLOAT, m_ir_cnt, {}};
+           }},
+          {{variable::TYPE::FLOAT, variable::TYPE::FLOAT}, [&] { result_expression = raw_expression; }},
+      },
+      {
+          {{variable::TYPE::INT32, variable::TYPE::INT32}, [&] { result_expression = raw_expression; }},
+          {{variable::TYPE::INT32, variable::TYPE::FLOAT},
+           [&] {
+             result_expression = {true, variable::TYPE::FLOAT, 0, static_cast<float>(std::get<std::int32_t>(raw_expression.value))};
+           }},
+          {{variable::TYPE::FLOAT, variable::TYPE::INT32},
+           [&] {
+             result_expression = {true, variable::TYPE::INT32, 0, static_cast<std::int32_t>(std::get<float>(raw_expression.value))};
+           }},
+          {{variable::TYPE::FLOAT, variable::TYPE::FLOAT}, [&] { result_expression = raw_expression; }},
+      }};
+
+  operations[raw_expression.is_const][{raw_expression.type, target_type}]();
+
+  if (to_non_const && result_expression.is_const) {
+    std::unordered_map<variable::TYPE, std::function<void()>> const_operations{
+        {variable::TYPE::INT32,
+         [&] {
+           pl("%{} = add i32 0, {}", new_ir_cnt(), std::get<std::int32_t>(result_expression.value));
+           result_expression = {false, variable::TYPE::INT32, m_ir_cnt, {}};
+         }},
+        {variable::TYPE::FLOAT, [&] {
+           pl("%{} = fadd float 0., {}", new_ir_cnt(), std::get<float>(result_expression.value));
+           result_expression = {false, variable::TYPE::FLOAT, m_ir_cnt, {}};
+         }}};
+    const_operations[result_expression.type]();
   }
+
+  return result_expression;
 }
 
-variable::TYPE visitor::get_common_type(variable::TYPE type1, variable::TYPE type2) {
-  if (type1 == variable::TYPE::FLOAT || type2 == variable::TYPE::FLOAT)
-    return variable::TYPE::FLOAT;
-  return variable::TYPE::INT32;
+variable::TYPE visitor::get_common_type(variable::TYPE type1, variable::TYPE type2, std::string op) {
+  std::set<std::string> arithmetic_operators{"+", "-", "*", "/", "%"};
+  std::set<std::string> relation_operators{">=", ">", "<=", "<", "==", "!="};
+  std::set<std::string> logic_operators{"&&", "||"};
+
+  if (arithmetic_operators.contains(op))
+    if (type1 == variable::TYPE::FLOAT || type2 == variable::TYPE::FLOAT)
+      return variable::TYPE::FLOAT;
+    else
+      return variable::TYPE::INT32;
+  else if (relation_operators.contains(op))
+    return variable::TYPE::INT32;
+  else if (logic_operators.contains(op))
+    if (type1 == variable::TYPE::FLOAT || type2 == variable::TYPE::FLOAT)
+      return variable::TYPE::FLOAT;
+    else
+      return variable::TYPE::INT32;
+  else
+    throw std::system_error(internal_error::unrecognized_operator, op);
 }
 
 std::any visitor::visitFunctionDefinition(sysy_parser::FunctionDefinitionContext *ctx) {
@@ -100,13 +138,11 @@ std::any visitor::visitTerminal(antlr4::tree::terminal_node *ctx) {
 }
 
 std::any visitor::visitIntegerConstantExpression(sysy_parser::IntegerConstantExpressionContext *ctx) {
-  pl("%{} = add i32 0, {}", m_ir_cnt++, std::any_cast<std::int32_t>(visit(ctx->INTEGER_CONSTANT())));
-  return expression{m_ir_cnt - 1, variable::TYPE::INT32};
+  return expression{true, variable::TYPE::INT32, 0, std::any_cast<std::int32_t>(visit(ctx->INTEGER_CONSTANT()))};
 }
 
 std::any visitor::visitFloatingConstantExpression(sysy_parser::FloatingConstantExpressionContext *ctx) {
-  pl("%{} = fadd float 0., {:e}", m_ir_cnt++, std::any_cast<float>(visit(ctx->FLOATING_CONSTANT())));
-  return expression{m_ir_cnt - 1, variable::TYPE::FLOAT};
+  return expression{true, variable::TYPE::FLOAT, 0, std::any_cast<float>(visit(ctx->FLOATING_CONSTANT()))};
 }
 
 std::any visitor::visitBraceExpression(sysy_parser::BraceExpressionContext *ctx) { return visit(ctx->expression()); }
@@ -114,230 +150,391 @@ std::any visitor::visitBraceExpression(sysy_parser::BraceExpressionContext *ctx)
 std::any visitor::visitUnaryExpression(sysy_parser::UnaryExpressionContext *ctx) {
   auto op{ctx->op->getText()};
 
-  auto [ir_cnt, type] = std::any_cast<expression>(visit(ctx->expression()));
-  auto cur_ir_cnt = m_ir_cnt++;
+  auto raw_expression{std::any_cast<expression>(visit(ctx->expression()))};
+  auto result_expression{expression{}};
 
-  std::unordered_map<std::string, std::function<void()>> operations_int32{
-      {"+", [&] { pl("%{} = mul i32 1, %{}", cur_ir_cnt, ir_cnt); }},
-      {"-", [&] { pl("%{} = mul i32 -1, %{}", cur_ir_cnt, ir_cnt); }},
-      {"!", [&] {
-         auto tmp_ir_cnt{cur_ir_cnt};
-         cur_ir_cnt = m_ir_cnt++;
-         pl("%{} = icmp eq i32 0, %{}", tmp_ir_cnt, ir_cnt);
-         pl("%{} = sext i1 %{} to i32", cur_ir_cnt, tmp_ir_cnt);
-       }}};
+  std::unordered_map<variable::TYPE, std::unordered_map<std::string, std::function<void()>>> operations[2]{
+      {{variable::TYPE::INT32,
+        {{"+",
+          [&] {
+            pl("%{} = mul i32 1, %{}", new_ir_cnt(), raw_expression.ir_cnt);
+            result_expression = {false, variable::TYPE::INT32, m_ir_cnt, {}};
+          }},
+         {"-",
+          [&] {
+            pl("%{} = mul i32 -1, %{}", new_ir_cnt(), raw_expression.ir_cnt);
+            result_expression = {false, variable::TYPE::INT32, m_ir_cnt, {}};
+          }},
+         {"!",
+          [&] {
+            auto tmp_ir_cnt{new_ir_cnt()};
+            pl("%{} = icmp eq i32 0, %{}", tmp_ir_cnt, raw_expression.ir_cnt);
+            pl("%{} = sext i1 %{} to i32", new_ir_cnt(), tmp_ir_cnt);
+            result_expression = {false, variable::TYPE::INT32, m_ir_cnt, {}};
+          }}}},
+       {variable::TYPE::FLOAT,
+        {{"+",
+          [&] {
+            pl("%{} = fmul float 1., %{}", new_ir_cnt(), raw_expression.ir_cnt);
+            result_expression = {false, variable::TYPE::FLOAT, m_ir_cnt, {}};
+          }},
+         {"-",
+          [&] {
+            pl("%{} = fmul float -1., %{}", new_ir_cnt(), raw_expression.ir_cnt);
+            result_expression = {false, variable::TYPE::FLOAT, m_ir_cnt, {}};
+          }},
+         {"!",
+          [&] {
+            auto tmp_ir_cnt{new_ir_cnt()};
+            pl("%{} = fcmp oeq float 0., %{}", tmp_ir_cnt, raw_expression.ir_cnt);
+            pl("%{} = sext i1 %{} to i32", new_ir_cnt(), tmp_ir_cnt);
+            result_expression = {false, variable::TYPE::INT32, m_ir_cnt, {}};
+          }}}}},
+      {{variable::TYPE::INT32,
+        {{"+", [&] { result_expression = raw_expression; }},
+         {"-", [&] { result_expression = {true, variable::TYPE::INT32, 0, -std::get<std::int32_t>(raw_expression.value)}; }},
+         {"!", [&] { result_expression = {true, variable::TYPE::INT32, 0, !std::get<std::int32_t>(raw_expression.value)}; }}}},
+       {variable::TYPE::FLOAT,
+        {{"+", [&] { result_expression = raw_expression; }},
+         {"-", [&] { result_expression = {true, variable::TYPE::FLOAT, 0, -std::get<float>(raw_expression.value)}; }},
+         {"!", [&] { result_expression = {true, variable::TYPE::FLOAT, 0, !std::get<float>(raw_expression.value)}; }}}}}};
 
-  std::unordered_map<std::string, std::function<void()>> operations_float{
-      {"+", [&] { pl("%{} = fmul float 1., %{}", cur_ir_cnt, ir_cnt); }},
-      {"-", [&] { pl("%{} = fmul float -1., %{}", cur_ir_cnt, ir_cnt); }},
-      {"!", [&] {
-         auto tmp_ir_cnt{cur_ir_cnt};
-         cur_ir_cnt = m_ir_cnt++;
-         pl("%{} = fcmp oeq float 0., %{}", tmp_ir_cnt, ir_cnt);
-         pl("%{} = sext i1 %{} to i32", cur_ir_cnt, tmp_ir_cnt);
-         type = variable::TYPE::INT32;
-       }}};
+  if (auto search{operations[raw_expression.is_const][raw_expression.type].find(op)};
+      search != operations[raw_expression.is_const][raw_expression.type].end())
+    search->second();
+  else
+    throw std::system_error(internal_error::unrecognized_operator, op);
 
-  switch (type) {
-  case variable::TYPE::INT32:
-    if (auto search{operations_int32.find(op)}; search != operations_int32.end())
-      search->second();
-    else
-      throw std::system_error(internal_error::unrecognized_operator, op);
-    break;
-
-  case variable::TYPE::FLOAT:
-    if (auto search{operations_int32.find(op)}; search != operations_float.end())
-      search->second();
-    else
-      throw std::system_error(internal_error::unrecognized_operator, op);
-    break;
-  }
-
-  return expression{cur_ir_cnt, type};
+  return result_expression;
 }
 
 std::any visitor::visitBinaryExpression(sysy_parser::BinaryExpressionContext *ctx) {
-  auto [ir_cnt_l, type_l]{std::any_cast<expression>(visit(ctx->lhs))};
-  auto [ir_cnt_r, type_r]{std::any_cast<expression>(visit(ctx->rhs))};
-  auto new_ir_cnt_l{ir_cnt_l}, new_ir_cnt_r{ir_cnt_r};
-  auto common_type{get_common_type(type_l, type_r)};
+  auto raw_expression_l{std::any_cast<expression>(visit(ctx->lhs))};
+  auto raw_expression_r{std::any_cast<expression>(visit(ctx->rhs))};
   auto op{ctx->op->getText()};
+  auto common_type{get_common_type(raw_expression_l.type, raw_expression_r.type, op)};
+  auto result_expression{expression{.is_const = raw_expression_l.is_const && raw_expression_r.is_const}};
 
-  if (type_l != common_type) {
-    new_ir_cnt_l = m_ir_cnt++;
-    convert_expression(type_l, ir_cnt_l, common_type, new_ir_cnt_l);
-  }
-  if (type_r != common_type) {
-    new_ir_cnt_r = m_ir_cnt++;
-    convert_expression(type_r, ir_cnt_r, common_type, new_ir_cnt_r);
-  }
+  raw_expression_l = expression_cast(raw_expression_l, common_type, !result_expression.is_const);
+  raw_expression_r = expression_cast(raw_expression_r, common_type, !result_expression.is_const);
 
-  auto cur_ir_cnt{m_ir_cnt++};
+  std::unordered_map<variable::TYPE, std::unordered_map<std::string, std::function<void()>>> operations[2]{
+      {{variable::TYPE::INT32,
+        {
+            {"+",
+             [&] {
+               pl("%{} = add i32 %{}, %{}", new_ir_cnt(), raw_expression_l.ir_cnt, raw_expression_r.ir_cnt);
+               result_expression = {false, variable::TYPE::INT32, m_ir_cnt, {}};
+             }},
+            {"-",
+             [&] {
+               pl("%{} = sub i32 %{}, %{}", new_ir_cnt(), raw_expression_l.ir_cnt, raw_expression_r.ir_cnt);
+               result_expression = {false, variable::TYPE::INT32, m_ir_cnt, {}};
+             }},
+            {"*",
+             [&] {
+               pl("%{} = mul i32 %{}, %{}", new_ir_cnt(), raw_expression_l.ir_cnt, raw_expression_r.ir_cnt);
+               result_expression = {false, variable::TYPE::INT32, m_ir_cnt, {}};
+             }},
+            {"/",
+             [&] {
+               pl("%{} = sdiv i32 %{}, %{}", new_ir_cnt(), raw_expression_l.ir_cnt, raw_expression_r.ir_cnt);
+               result_expression = {false, variable::TYPE::INT32, m_ir_cnt, {}};
+             }},
+            {"%",
+             [&] {
+               pl("%{} = srem i32 %{}, %{}", new_ir_cnt(), raw_expression_l.ir_cnt, raw_expression_r.ir_cnt);
+               result_expression = {false, variable::TYPE::INT32, m_ir_cnt, {}};
+             }},
+            {">=",
+             [&] {
+               auto tmp_ir_cnt{new_ir_cnt()};
+               pl("%{} = icmp sge i32 %{}, %{}", tmp_ir_cnt, raw_expression_l.ir_cnt, raw_expression_r.ir_cnt);
+               pl("%{} = sext i1 %{} to i32", new_ir_cnt(), tmp_ir_cnt);
+               result_expression = {false, variable::TYPE::INT32, m_ir_cnt, {}};
+             }},
+            {">",
+             [&] {
+               auto tmp_ir_cnt{new_ir_cnt()};
+               pl("%{} = icmp sgt i32 %{}, %{}", tmp_ir_cnt, raw_expression_l.ir_cnt, raw_expression_r.ir_cnt);
+               pl("%{} = sext i1 %{} to i32", new_ir_cnt(), tmp_ir_cnt);
+               result_expression = {false, variable::TYPE::INT32, m_ir_cnt, {}};
+             }},
+            {"<=",
+             [&] {
+               auto tmp_ir_cnt{new_ir_cnt()};
+               pl("%{} = icmp sle i32 %{}, %{}", tmp_ir_cnt, raw_expression_l.ir_cnt, raw_expression_r.ir_cnt);
+               pl("%{} = sext i1 %{} to i32", new_ir_cnt(), tmp_ir_cnt);
+               result_expression = {false, variable::TYPE::INT32, m_ir_cnt, {}};
+             }},
+            {"<",
+             [&] {
+               auto tmp_ir_cnt{new_ir_cnt()};
+               pl("%{} = icmp slt i32 %{}, %{}", tmp_ir_cnt, raw_expression_l.ir_cnt, raw_expression_r.ir_cnt);
+               pl("%{} = sext i1 %{} to i32", new_ir_cnt(), tmp_ir_cnt);
+               result_expression = {false, variable::TYPE::INT32, m_ir_cnt, {}};
+             }},
+            {"==",
+             [&] {
+               auto tmp_ir_cnt{new_ir_cnt()};
+               pl("%{} = icmp eq i32 %{}, %{}", tmp_ir_cnt, raw_expression_l.ir_cnt, raw_expression_r.ir_cnt);
+               pl("%{} = sext i1 %{} to i32", new_ir_cnt(), tmp_ir_cnt);
+               result_expression = {false, variable::TYPE::INT32, m_ir_cnt, {}};
+             }},
+            {"!=",
+             [&] {
+               auto tmp_ir_cnt{new_ir_cnt()};
+               pl("%{} = icmp ne i32 %{}, %{}", tmp_ir_cnt, raw_expression_l.ir_cnt, raw_expression_r.ir_cnt);
+               pl("%{} = sext i1 %{} to i32", new_ir_cnt(), tmp_ir_cnt);
+               result_expression = {false, variable::TYPE::INT32, m_ir_cnt, {}};
+             }},
+            {"&&",
+             [&] {
+               auto tmp_ir_cnt1{new_ir_cnt()}, tmp_ir_cnt2{new_ir_cnt()};
+               pl("%{} = and i32 %{}, %{}", tmp_ir_cnt1, raw_expression_l.ir_cnt, raw_expression_r.ir_cnt);
+               pl("%{} = icmp ne i32 %{}, 0", tmp_ir_cnt2, tmp_ir_cnt1);
+               pl("%{} = sext i1 %{} to i32", new_ir_cnt(), tmp_ir_cnt2);
+               result_expression = {false, variable::TYPE::INT32, m_ir_cnt, {}};
+             }},
+            {"||",
+             [&] {
+               auto tmp_ir_cnt1{new_ir_cnt()}, tmp_ir_cnt2{new_ir_cnt()};
+               pl("%{} = or i32 %{}, %{}", tmp_ir_cnt1, raw_expression_l.ir_cnt, raw_expression_r.ir_cnt);
+               pl("%{} = icmp ne i32 %{}, 0", tmp_ir_cnt2, tmp_ir_cnt1);
+               pl("%{} = sext i1 %{} to i32", new_ir_cnt(), tmp_ir_cnt2);
+               result_expression = {false, variable::TYPE::INT32, m_ir_cnt, {}};
+             }},
+        }},
+       {variable::TYPE::FLOAT,
+        {{"+",
+          [&] {
+            pl("%{} = fadd float %{}, %{}", new_ir_cnt(), raw_expression_l.ir_cnt, raw_expression_r.ir_cnt);
+            result_expression = {false, variable::TYPE::FLOAT, m_ir_cnt, {}};
+          }},
+         {"-",
+          [&] {
+            pl("%{} = fsub float %{}, %{}", new_ir_cnt(), raw_expression_l.ir_cnt, raw_expression_r.ir_cnt);
+            result_expression = {false, variable::TYPE::FLOAT, m_ir_cnt, {}};
+          }},
+         {"*",
+          [&] {
+            pl("%{} = fmul float %{}, %{}", new_ir_cnt(), raw_expression_l.ir_cnt, raw_expression_r.ir_cnt);
+            result_expression = {false, variable::TYPE::FLOAT, m_ir_cnt, {}};
+          }},
+         {"/",
+          [&] {
+            pl("%{} = fdiv float %{}, %{}", new_ir_cnt(), raw_expression_l.ir_cnt, raw_expression_r.ir_cnt);
+            result_expression = {false, variable::TYPE::FLOAT, m_ir_cnt, {}};
+          }},
+         {">=",
+          [&] {
+            auto tmp_ir_cnt{new_ir_cnt()};
+            pl("%{} = fcmp oge float %{}, %{}", tmp_ir_cnt, raw_expression_l.ir_cnt, raw_expression_r.ir_cnt);
+            pl("%{} = sext i1 %{} to i32", new_ir_cnt(), tmp_ir_cnt);
+            result_expression = {false, variable::TYPE::INT32, m_ir_cnt, {}};
+          }},
+         {">",
+          [&] {
+            auto tmp_ir_cnt{new_ir_cnt()};
+            pl("%{} = fcmp ogt float %{}, %{}", tmp_ir_cnt, raw_expression_l.ir_cnt, raw_expression_r.ir_cnt);
+            pl("%{} = sext i1 %{} to i32", new_ir_cnt(), tmp_ir_cnt);
+            result_expression = {false, variable::TYPE::INT32, m_ir_cnt, {}};
+          }},
+         {"<=",
+          [&] {
+            auto tmp_ir_cnt{new_ir_cnt()};
+            pl("%{} = fcmp ole float %{}, %{}", tmp_ir_cnt, raw_expression_l.ir_cnt, raw_expression_r.ir_cnt);
+            pl("%{} = sext i1 %{} to i32", new_ir_cnt(), tmp_ir_cnt);
+            result_expression = {false, variable::TYPE::INT32, m_ir_cnt, {}};
+          }},
+         {"<",
+          [&] {
+            auto tmp_ir_cnt{new_ir_cnt()};
+            pl("%{} = fcmp olt float %{}, %{}", tmp_ir_cnt, raw_expression_l.ir_cnt, raw_expression_r.ir_cnt);
+            pl("%{} = sext i1 %{} to i32", new_ir_cnt(), tmp_ir_cnt);
+            result_expression = {false, variable::TYPE::INT32, m_ir_cnt, {}};
+          }},
+         {"==",
+          [&] {
+            auto tmp_ir_cnt{new_ir_cnt()};
+            pl("%{} = fcmp oeq float %{}, %{}", tmp_ir_cnt, raw_expression_l.ir_cnt, raw_expression_r.ir_cnt);
+            pl("%{} = sext i1 %{} to i32", new_ir_cnt(), tmp_ir_cnt);
+            result_expression = {false, variable::TYPE::INT32, m_ir_cnt, {}};
+          }},
+         {"!=",
+          [&] {
+            auto tmp_ir_cnt{new_ir_cnt()};
+            pl("%{} = fcmp one float %{}, %{}", tmp_ir_cnt, raw_expression_l.ir_cnt, raw_expression_r.ir_cnt);
+            pl("%{} = sext i1 %{} to i32", new_ir_cnt(), tmp_ir_cnt);
+            result_expression = {false, variable::TYPE::INT32, m_ir_cnt, {}};
+          }},
+         {"&&",
+          [&] {
+            auto tmp_ir_cnt1{new_ir_cnt()}, tmp_ir_cnt2{new_ir_cnt()}, tmp_ir_cnt3{new_ir_cnt()};
+            pl("%{} = fcmp one float %{}, 0", tmp_ir_cnt1, raw_expression_l.ir_cnt);
+            pl("%{} = fcmp one float %{}, 0", tmp_ir_cnt2, raw_expression_r.ir_cnt);
+            pl("%{} = and i1 %{}, %{}", tmp_ir_cnt3, tmp_ir_cnt1, tmp_ir_cnt2);
+            pl("%{} = sext i1 %{} to i32", new_ir_cnt(), tmp_ir_cnt3);
+            result_expression = {false, variable::TYPE::INT32, m_ir_cnt, {}};
+          }},
+         {"||",
+          [&] {
+            auto tmp_ir_cnt1{new_ir_cnt()}, tmp_ir_cnt2{new_ir_cnt()}, tmp_ir_cnt3{new_ir_cnt()};
+            pl("%{} = fcmp one float %{}, 0", tmp_ir_cnt1, raw_expression_l.ir_cnt);
+            pl("%{} = fcmp one float %{}, 0", tmp_ir_cnt2, raw_expression_r.ir_cnt);
+            pl("%{} = or i1 %{}, %{}", tmp_ir_cnt3, tmp_ir_cnt1, tmp_ir_cnt2);
+            pl("%{} = sext i1 %{} to i32", new_ir_cnt(), tmp_ir_cnt3);
+            result_expression = {false, variable::TYPE::INT32, m_ir_cnt, {}};
+          }}}}},
 
-  std::unordered_map<std::string, std::function<void()>> operations_int32{
-      {"+", [&] { pl("%{} = add i32 %{}, %{}", cur_ir_cnt, new_ir_cnt_l, new_ir_cnt_r); }},
-      {"-", [&] { pl("%{} = sub i32 %{}, %{}", cur_ir_cnt, new_ir_cnt_l, new_ir_cnt_r); }},
-      {"*", [&] { pl("%{} = mul i32 %{}, %{}", cur_ir_cnt, new_ir_cnt_l, new_ir_cnt_r); }},
-      {"/", [&] { pl("%{} = sdiv i32 %{}, %{}", cur_ir_cnt, new_ir_cnt_l, new_ir_cnt_r); }},
-      {"%", [&] { pl("%{} = srem i32 %{}, %{}", cur_ir_cnt, new_ir_cnt_l, new_ir_cnt_r); }},
-      {">=",
-       [&] {
-         pl("%{} = icmp sge i32 %{}, %{}", cur_ir_cnt, new_ir_cnt_l, new_ir_cnt_r);
-         pl("%{} = sext i1 %{} to i32", cur_ir_cnt + 1, cur_ir_cnt);
-         cur_ir_cnt = m_ir_cnt++;
-         common_type = variable::TYPE::INT32;
-       }},
-      {">",
-       [&] {
-         pl("%{} = icmp sgt i32 %{}, %{}", cur_ir_cnt, new_ir_cnt_l, new_ir_cnt_r);
-         pl("%{} = sext i1 %{} to i32", cur_ir_cnt + 1, cur_ir_cnt);
-         cur_ir_cnt = m_ir_cnt++;
-         common_type = variable::TYPE::INT32;
-       }},
-      {"<=",
-       [&] {
-         pl("%{} = icmp sle i32 %{}, %{}", cur_ir_cnt, new_ir_cnt_l, new_ir_cnt_r);
-         pl("%{} = sext i1 %{} to i32", cur_ir_cnt + 1, cur_ir_cnt);
-         cur_ir_cnt = m_ir_cnt++;
-         common_type = variable::TYPE::INT32;
-       }},
-      {"<",
-       [&] {
-         pl("%{} = icmp slt i32 %{}, %{}", cur_ir_cnt, new_ir_cnt_l, new_ir_cnt_r);
-         pl("%{} = sext i1 %{} to i32", cur_ir_cnt + 1, cur_ir_cnt);
-         cur_ir_cnt = m_ir_cnt++;
-         common_type = variable::TYPE::INT32;
-       }},
-      {"==",
-       [&] {
-         pl("%{} = icmp eq i32 %{}, %{}", cur_ir_cnt, new_ir_cnt_l, new_ir_cnt_r);
-         pl("%{} = sext i1 %{} to i32", cur_ir_cnt + 1, cur_ir_cnt);
-         cur_ir_cnt = m_ir_cnt++;
-         common_type = variable::TYPE::INT32;
-       }},
-      {"!=",
-       [&] {
-         pl("%{} = icmp ne i32 %{}, %{}", cur_ir_cnt, new_ir_cnt_l, new_ir_cnt_r);
-         pl("%{} = sext i1 %{} to i32", cur_ir_cnt + 1, cur_ir_cnt);
-         cur_ir_cnt = m_ir_cnt++;
-         common_type = variable::TYPE::INT32;
-       }},
-      {"&&",
-       [&] {
-         pl("%{} = and i32 %{}, %{}", cur_ir_cnt, new_ir_cnt_l, new_ir_cnt_r);
-         pl("%{} = icmp ne i32 %{}, 0", cur_ir_cnt + 1, cur_ir_cnt);
-         pl("%{} = sext i1 %{} to i32", cur_ir_cnt + 2, cur_ir_cnt + 1);
-         cur_ir_cnt += 2, m_ir_cnt += 2;
-         common_type = variable::TYPE::INT32;
-       }},
-      {"||",
-       [&] {
-         pl("%{} = or i32 %{}, %{}", cur_ir_cnt, new_ir_cnt_l, new_ir_cnt_r);
-         pl("%{} = icmp ne i32 %{}, 0", cur_ir_cnt + 1, cur_ir_cnt);
-         pl("%{} = sext i1 %{} to i32", cur_ir_cnt + 2, cur_ir_cnt + 1);
-         cur_ir_cnt += 2, m_ir_cnt += 2;
-         common_type = variable::TYPE::INT32;
-       }},
-  };
+      {{variable::TYPE::INT32,
+        {{"+",
+          [&] {
+            result_expression = {true, variable::TYPE::INT32, 0,
+                                 std::get<std::int32_t>(raw_expression_l.value) + std::get<std::int32_t>(raw_expression_r.value)};
+          }},
+         {"-",
+          [&] {
+            result_expression = {true, variable::TYPE::INT32, 0,
+                                 std::get<std::int32_t>(raw_expression_l.value) - std::get<std::int32_t>(raw_expression_r.value)};
+          }},
+         {"*",
+          [&] {
+            result_expression = {true, variable::TYPE::INT32, 0,
+                                 std::get<std::int32_t>(raw_expression_l.value) * std::get<std::int32_t>(raw_expression_r.value)};
+          }},
+         {"/",
+          [&] {
+            if (std::get<std::int32_t>(raw_expression_r.value) == 0)
+              throw std::system_error(internal_error::divide_by_zero);
+            result_expression = {true, variable::TYPE::INT32, 0,
+                                 std::get<std::int32_t>(raw_expression_l.value) / std::get<std::int32_t>(raw_expression_r.value)};
+          }},
+         {"%",
+          [&] {
+            if (std::get<std::int32_t>(raw_expression_r.value) == 0)
+              throw std::system_error(internal_error::modulo_by_zero);
+            else
+              result_expression = {true, variable::TYPE::INT32, 0,
+                                   std::get<std::int32_t>(raw_expression_l.value) % std::get<std::int32_t>(raw_expression_r.value)};
+          }},
+         {">=",
+          [&] {
+            result_expression = {true, variable::TYPE::INT32, 0,
+                                 std::get<std::int32_t>(raw_expression_l.value) >= std::get<std::int32_t>(raw_expression_r.value)};
+          }},
+         {">",
+          [&] {
+            result_expression = {true, variable::TYPE::INT32, 0,
+                                 std::get<std::int32_t>(raw_expression_l.value) > std::get<std::int32_t>(raw_expression_r.value)};
+          }},
+         {"<",
+          [&] {
+            result_expression = {true, variable::TYPE::INT32, 0,
+                                 std::get<std::int32_t>(raw_expression_l.value) < std::get<std::int32_t>(raw_expression_r.value)};
+          }},
+         {"<=",
+          [&] {
+            result_expression = {true, variable::TYPE::INT32, 0,
+                                 std::get<std::int32_t>(raw_expression_l.value) <= std::get<std::int32_t>(raw_expression_r.value)};
+          }},
+         {"==",
+          [&] {
+            result_expression = {true, variable::TYPE::INT32, 0,
+                                 std::get<std::int32_t>(raw_expression_l.value) == std::get<std::int32_t>(raw_expression_r.value)};
+          }},
+         {"!=",
+          [&] {
+            result_expression = {true, variable::TYPE::INT32, 0,
+                                 std::get<std::int32_t>(raw_expression_l.value) != std::get<std::int32_t>(raw_expression_r.value)};
+          }},
+         {"&&",
+          [&] {
+            result_expression = {true, variable::TYPE::INT32, 0,
+                                 std::get<std::int32_t>(raw_expression_l.value) && std::get<std::int32_t>(raw_expression_r.value)};
+          }},
+         {"||",
+          [&] {
+            result_expression = {true, variable::TYPE::INT32, 0,
+                                 std::get<std::int32_t>(raw_expression_l.value) || std::get<std::int32_t>(raw_expression_r.value)};
+          }}}},
+       {variable::TYPE::FLOAT,
+        {{"+",
+          [&] {
+            result_expression = {true, variable::TYPE::FLOAT, 0,
+                                 std::get<float>(raw_expression_l.value) + std::get<float>(raw_expression_r.value)};
+          }},
+         {"-",
+          [&] {
+            result_expression = {true, variable::TYPE::FLOAT, 0,
+                                 std::get<float>(raw_expression_l.value) - std::get<float>(raw_expression_r.value)};
+          }},
+         {"*",
+          [&] {
+            result_expression = {true, variable::TYPE::FLOAT, 0,
+                                 std::get<float>(raw_expression_l.value) * std::get<float>(raw_expression_r.value)};
+          }},
+         {"/",
+          [&] {
+            if (std::get<float>(raw_expression_r.value) == 0)
+              throw std::system_error(internal_error::divide_by_zero);
+            result_expression = {true, variable::TYPE::FLOAT, 0,
+                                 std::get<float>(raw_expression_l.value) / std::get<float>(raw_expression_r.value)};
+          }},
+         {">=",
+          [&] {
+            result_expression = {true, variable::TYPE::INT32, 0,
+                                 std::get<float>(raw_expression_l.value) >= std::get<float>(raw_expression_r.value)};
+          }},
+         {">",
+          [&] {
+            result_expression = {true, variable::TYPE::INT32, 0,
+                                 std::get<float>(raw_expression_l.value) > std::get<float>(raw_expression_r.value)};
+          }},
+         {"<=",
+          [&] {
+            result_expression = {true, variable::TYPE::INT32, 0,
+                                 std::get<float>(raw_expression_l.value) < std::get<float>(raw_expression_r.value)};
+          }},
+         {"==",
+          [&] {
+            result_expression = {true, variable::TYPE::INT32, 0,
+                                 std::get<float>(raw_expression_l.value) == std::get<float>(raw_expression_r.value)};
+          }},
+         {"!=",
+          [&] {
+            result_expression = {true, variable::TYPE::INT32, 0,
+                                 std::get<float>(raw_expression_l.value) != std::get<float>(raw_expression_r.value)};
+          }},
+         {"&&",
+          [&] {
+            result_expression = {true, variable::TYPE::INT32, 0,
+                                 std::get<float>(raw_expression_l.value) && std::get<float>(raw_expression_r.value)};
+          }},
+         {"||", [&] {
+            result_expression = {true, variable::TYPE::INT32, 0,
+                                 std::get<float>(raw_expression_l.value) || std::get<float>(raw_expression_r.value)};
+          }}}}}};
 
-  std::unordered_map<std::string, std::function<void()>> operations_float{
-      {"+", [&] { pl("%{} = fadd float %{}, %{}", cur_ir_cnt, new_ir_cnt_l, new_ir_cnt_r); }},
-      {"-", [&] { pl("%{} = fsub float %{}, %{}", cur_ir_cnt, new_ir_cnt_l, new_ir_cnt_r); }},
-      {"*", [&] { pl("%{} = fmul float %{}, %{}", cur_ir_cnt, new_ir_cnt_l, new_ir_cnt_r); }},
-      {"/", [&] { pl("%{} = fdiv float %{}, %{}", cur_ir_cnt, new_ir_cnt_l, new_ir_cnt_r); }},
-      {">=",
-       [&] {
-         pl("%{} = fcmp oge float %{}, %{}", cur_ir_cnt, new_ir_cnt_l, new_ir_cnt_r);
-         pl("%{} = sext i1 %{} to i32", cur_ir_cnt + 1, cur_ir_cnt);
-         cur_ir_cnt = m_ir_cnt++;
-         common_type = variable::TYPE::INT32;
-       }},
-      {">",
-       [&] {
-         pl("%{} = fcmp ogt float %{}, %{}", cur_ir_cnt, new_ir_cnt_l, new_ir_cnt_r);
-         pl("%{} = sext i1 %{} to i32", cur_ir_cnt + 1, cur_ir_cnt);
-         cur_ir_cnt = m_ir_cnt++;
-         common_type = variable::TYPE::INT32;
-       }},
-      {"<=",
-       [&] {
-         pl("%{} = fcmp ole float %{}, %{}", cur_ir_cnt, new_ir_cnt_l, new_ir_cnt_r);
-         pl("%{} = sext i1 %{} to i32", cur_ir_cnt + 1, cur_ir_cnt);
-         cur_ir_cnt = m_ir_cnt++;
-         common_type = variable::TYPE::INT32;
-       }},
-      {"<",
-       [&] {
-         pl("%{} = fcmp olt float %{}, %{}", cur_ir_cnt, new_ir_cnt_l, new_ir_cnt_r);
-         pl("%{} = sext i1 %{} to i32", cur_ir_cnt + 1, cur_ir_cnt);
-         cur_ir_cnt = m_ir_cnt++;
-         common_type = variable::TYPE::INT32;
-       }},
-      {"==",
-       [&] {
-         pl("%{} = fcmp oeq float %{}, %{}", cur_ir_cnt, new_ir_cnt_l, new_ir_cnt_r);
-         pl("%{} = sext i1 %{} to i32", cur_ir_cnt + 1, cur_ir_cnt);
-         cur_ir_cnt = m_ir_cnt++;
-         common_type = variable::TYPE::INT32;
-       }},
-      {"!=",
-       [&] {
-         pl("%{} = fcmp one float %{}, %{}", cur_ir_cnt, new_ir_cnt_l, new_ir_cnt_r);
-         pl("%{} = sext i1 %{} to i32", cur_ir_cnt + 1, cur_ir_cnt);
-         cur_ir_cnt = m_ir_cnt++;
-         common_type = variable::TYPE::INT32;
-       }},
-      {"&&",
-       [&] {
-         pl("%{} = fcmp one float %{}, 0", cur_ir_cnt, new_ir_cnt_l);
-         pl("%{} = fcmp one float %{}, 0", cur_ir_cnt + 1, new_ir_cnt_r);
-         pl("%{} = and i1 %{}, %{}", cur_ir_cnt + 2, cur_ir_cnt, cur_ir_cnt + 1);
-         pl("%{} = sext i1 %{} to i32", cur_ir_cnt + 3, cur_ir_cnt + 2);
-         cur_ir_cnt += 3, m_ir_cnt += 3;
-         common_type = variable::TYPE::INT32;
-       }},
-      {"||",
-       [&] {
-         pl("%{} = or i32 %{}, %{}", cur_ir_cnt, new_ir_cnt_l, new_ir_cnt_r);
-         pl("%{} = icmp ne i32 %{}, 0", cur_ir_cnt + 1, cur_ir_cnt);
-         pl("%{} = sext i1 %{} to i32", cur_ir_cnt + 2, cur_ir_cnt + 1);
-         cur_ir_cnt += 2, m_ir_cnt += 2;
-         common_type = variable::TYPE::INT32;
-       }},
-  };
+  if (auto search{operations[result_expression.is_const][common_type].find(op)};
+      search != operations[result_expression.is_const][common_type].end())
+    search->second();
+  else
+    throw std::system_error(internal_error::unrecognized_operator, op);
 
-  switch (common_type) {
-  case variable::TYPE::INT32:
-    if (auto search{operations_int32.find(op)}; search != operations_int32.end())
-      search->second();
-    else
-      throw std::system_error(internal_error::unrecognized_operator, op);
-    break;
-
-  case variable::TYPE::FLOAT:
-    if (auto search{operations_float.find(op)}; search != operations_float.end())
-      search->second();
-    else
-      throw std::system_error(internal_error::unrecognized_operator, op);
-    break;
-  }
-
-  return expression{cur_ir_cnt, common_type};
+  return result_expression;
 }
 
 std::any visitor::visitReturnStatement(sysy_parser::ReturnStatementContext *ctx) {
-  auto [ir_cnt, type]{std::any_cast<expression>(visit(ctx->expression()))};
+  auto raw_expression{std::any_cast<expression>(visit(ctx->expression()))};
   auto return_type{resolve_function(m_current_function_name.value()).return_type()};
   if (return_type != function::TYPE::VOID) {
     auto target_type = function::to_variable_type(return_type);
-    if (target_type != type) {
-      auto target_ir_cnt = m_ir_cnt++;
-      convert_expression(type, ir_cnt, target_type, target_ir_cnt);
-      ir_cnt = target_ir_cnt;
-    }
-    auto variable_type_name{variable::to_string(target_type)};
-    pl("ret {} %{}", variable_type_name, ir_cnt);
+    if (target_type != raw_expression.type)
+      raw_expression = expression_cast(raw_expression, target_type);
+    pl("ret {} {}", variable::to_string(target_type), raw_expression.to_string());
   }
   return defaultResult();
 }
+
+// TODO: 检查 sext

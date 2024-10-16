@@ -16,6 +16,8 @@ export enum class internal_error {
   function_return_type_void_conversion,
   unrecognized_operator,
   syntax_error,
+  divide_by_zero,
+  modulo_by_zero,
   failed
 };
 
@@ -47,6 +49,10 @@ export std::error_code make_error_code(internal_error e) noexcept {
         return "Unrecognized operator";
       case internal_error::syntax_error:
         return "Syntax error";
+      case internal_error::divide_by_zero:
+        return "Divide by zero";
+      case internal_error::modulo_by_zero:
+        return "Modulo by zero";
       case internal_error::failed:
         return "Failed";
       default:
