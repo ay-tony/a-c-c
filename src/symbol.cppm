@@ -26,6 +26,7 @@ public:
   ir_cnt_t ir_cnt() const { return m_ir_cnt; }
   TYPE type() const { return m_type; }
   bool is_const() const { return m_isconst; }
+  std::variant<std::int32_t, float> value() { return m_value; }
 };
 
 export class function {

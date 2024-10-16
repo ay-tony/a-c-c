@@ -139,6 +139,24 @@ std::any visitor::visitTerminal(antlr4::tree::terminal_node *ctx) {
   }
 }
 
+std::any visitor::visitLeftValue(sysy_parser::LeftValueContext *ctx) {
+  // TODO: 加上对 expression 的处理（加入数组之后）
+  return resolve_variable(std::any_cast<std::string>(visit(ctx->IDENTIFIER())));
+}
+
+std::any visitor::visitLeftValueExpression(sysy_parser::LeftValueExpressionContext *ctx) {
+  auto var{std::any_cast<variable>(visit(ctx->leftValue()))};
+  if (var.is_const()) {
+    switch (var.type()) {
+    case variable::TYPE::INT32:
+      return expression{true, variable::TYPE::INT32, 0, std::get<std::int32_t>(var.value())};
+    case variable::TYPE::FLOAT:
+      return expression{true, variable::TYPE::FLOAT, 0, std::get<float>(var.value())};
+    }
+  } else
+    return defaultResult(); // TODO: 加入对变量的返回
+}
+
 std::any visitor::visitIntegerConstantExpression(sysy_parser::IntegerConstantExpressionContext *ctx) {
   return expression{true, variable::TYPE::INT32, 0, std::any_cast<std::int32_t>(visit(ctx->INTEGER_CONSTANT()))};
 }
