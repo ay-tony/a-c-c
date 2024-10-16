@@ -146,14 +146,9 @@ std::any visitor::visitLeftValue(sysy_parser::LeftValueContext *ctx) {
 
 std::any visitor::visitLeftValueExpression(sysy_parser::LeftValueExpressionContext *ctx) {
   auto var{std::any_cast<variable>(visit(ctx->leftValue()))};
-  if (var.is_const()) {
-    switch (var.type()) {
-    case variable::TYPE::INT32:
-      return expression{true, variable::TYPE::INT32, 0, std::get<std::int32_t>(var.value())};
-    case variable::TYPE::FLOAT:
-      return expression{true, variable::TYPE::FLOAT, 0, std::get<float>(var.value())};
-    }
-  } else {
+  if (var.is_const())
+    return expression{true, var.type(), 0, var.value()};
+  else {
     pl("%{} = load {}, ptr %{}", new_ir_cnt(), variable::to_string(var.type()), var.ir_cnt());
     return expression{false, var.type(), m_ir_cnt, {}};
   }
