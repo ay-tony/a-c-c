@@ -561,9 +561,7 @@ std::any visitor::visitConstDeclaration(sysy_parser::ConstDeclarationContext *ct
   for (auto child : ctx->constDefinition()) {
     auto [name, value]{std::any_cast<std::tuple<std::string, expression>>(visit(child))};
     value = expression_cast(value, type);
-    current_scope().insert_variable(name, {new_ir_cnt(), type, true});
-    pl("%{} = alloca {}", m_ir_cnt, variable::to_string(type));
-    pl("store {} {}, ptr %{}", variable::to_string(type), value.to_string(), m_ir_cnt);
+    current_scope().insert_variable(name, {type, value.value});
   }
 
   return defaultResult();

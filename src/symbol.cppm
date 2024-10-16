@@ -12,12 +12,15 @@ public:
   static std::string to_string(TYPE type);
 
 private:
-  ir_cnt_t m_ir_cnt;
   TYPE m_type;
   bool m_isconst;
+  ir_cnt_t m_ir_cnt;                         // only valid when m_isconst == false
+  std::variant<std::int32_t, float> m_value; // only valid when m_isconst == true
 
 public:
-  variable(std::uint32_t ir_cnt, TYPE type, bool isconst) : m_ir_cnt{ir_cnt}, m_type{type}, m_isconst{isconst} {}
+  variable(TYPE type, ir_cnt_t ir_cnt) : m_type{type}, m_isconst{false}, m_ir_cnt{ir_cnt}, m_value{} {}
+  variable(TYPE type, std::variant<std::int32_t, float> value)
+      : m_type{type}, m_isconst{true}, m_ir_cnt{}, m_value{value} {}
   variable(const variable &func) = default;
 
   ir_cnt_t ir_cnt() const { return m_ir_cnt; }
