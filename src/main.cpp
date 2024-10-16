@@ -13,7 +13,8 @@ int main(int argc, const char *argv[]) {
 
     std::array log_levels{spdlog::level::info, spdlog::level::debug, spdlog::level::trace};
     spdlog::set_level(log_levels[std::min(options.verbosity, log_levels.size() - 1)]);
-    spdlog::debug("setting log level to {} / {}...", std::min(options.verbosity, log_levels.size() - 1), log_levels.size() - 1);
+    spdlog::debug("setting log level to {} / {}...", std::min(options.verbosity, log_levels.size() - 1),
+                  log_levels.size() - 1);
 
     // 读取源文件并转化成输入流
     spdlog::debug("reading source file from {}...", options.source_file);

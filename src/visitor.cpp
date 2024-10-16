@@ -56,11 +56,13 @@ visitor::expression visitor::expression_cast(expression raw_expression, variable
           {{variable::TYPE::INT32, variable::TYPE::INT32}, [&] { result_expression = raw_expression; }},
           {{variable::TYPE::INT32, variable::TYPE::FLOAT},
            [&] {
-             result_expression = {true, variable::TYPE::FLOAT, 0, static_cast<float>(std::get<std::int32_t>(raw_expression.value))};
+             result_expression = {true, variable::TYPE::FLOAT, 0,
+                                  static_cast<float>(std::get<std::int32_t>(raw_expression.value))};
            }},
           {{variable::TYPE::FLOAT, variable::TYPE::INT32},
            [&] {
-             result_expression = {true, variable::TYPE::INT32, 0, static_cast<std::int32_t>(std::get<float>(raw_expression.value))};
+             result_expression = {true, variable::TYPE::INT32, 0,
+                                  static_cast<std::int32_t>(std::get<float>(raw_expression.value))};
            }},
           {{variable::TYPE::FLOAT, variable::TYPE::FLOAT}, [&] { result_expression = raw_expression; }},
       }};
@@ -192,12 +194,17 @@ std::any visitor::visitUnaryExpression(sysy_parser::UnaryExpressionContext *ctx)
           }}}}},
       {{variable::TYPE::INT32,
         {{"+", [&] { result_expression = raw_expression; }},
-         {"-", [&] { result_expression = {true, variable::TYPE::INT32, 0, -std::get<std::int32_t>(raw_expression.value)}; }},
-         {"!", [&] { result_expression = {true, variable::TYPE::INT32, 0, !std::get<std::int32_t>(raw_expression.value)}; }}}},
+         {"-",
+          [&] { result_expression = {true, variable::TYPE::INT32, 0, -std::get<std::int32_t>(raw_expression.value)}; }},
+         {"!",
+          [&] {
+            result_expression = {true, variable::TYPE::INT32, 0, !std::get<std::int32_t>(raw_expression.value)};
+          }}}},
        {variable::TYPE::FLOAT,
         {{"+", [&] { result_expression = raw_expression; }},
          {"-", [&] { result_expression = {true, variable::TYPE::FLOAT, 0, -std::get<float>(raw_expression.value)}; }},
-         {"!", [&] { result_expression = {true, variable::TYPE::FLOAT, 0, !std::get<float>(raw_expression.value)}; }}}}}};
+         {"!",
+          [&] { result_expression = {true, variable::TYPE::FLOAT, 0, !std::get<float>(raw_expression.value)}; }}}}}};
 
   if (auto search{operations[raw_expression.is_const][raw_expression.type].find(op)};
       search != operations[raw_expression.is_const][raw_expression.type].end())
@@ -391,24 +398,28 @@ std::any visitor::visitBinaryExpression(sysy_parser::BinaryExpressionContext *ct
         {{"+",
           [&] {
             result_expression = {true, variable::TYPE::INT32, 0,
-                                 std::get<std::int32_t>(raw_expression_l.value) + std::get<std::int32_t>(raw_expression_r.value)};
+                                 std::get<std::int32_t>(raw_expression_l.value) +
+                                     std::get<std::int32_t>(raw_expression_r.value)};
           }},
          {"-",
           [&] {
             result_expression = {true, variable::TYPE::INT32, 0,
-                                 std::get<std::int32_t>(raw_expression_l.value) - std::get<std::int32_t>(raw_expression_r.value)};
+                                 std::get<std::int32_t>(raw_expression_l.value) -
+                                     std::get<std::int32_t>(raw_expression_r.value)};
           }},
          {"*",
           [&] {
             result_expression = {true, variable::TYPE::INT32, 0,
-                                 std::get<std::int32_t>(raw_expression_l.value) * std::get<std::int32_t>(raw_expression_r.value)};
+                                 std::get<std::int32_t>(raw_expression_l.value) *
+                                     std::get<std::int32_t>(raw_expression_r.value)};
           }},
          {"/",
           [&] {
             if (std::get<std::int32_t>(raw_expression_r.value) == 0)
               throw std::system_error(internal_error::divide_by_zero);
             result_expression = {true, variable::TYPE::INT32, 0,
-                                 std::get<std::int32_t>(raw_expression_l.value) / std::get<std::int32_t>(raw_expression_r.value)};
+                                 std::get<std::int32_t>(raw_expression_l.value) /
+                                     std::get<std::int32_t>(raw_expression_r.value)};
           }},
          {"%",
           [&] {
@@ -416,47 +427,56 @@ std::any visitor::visitBinaryExpression(sysy_parser::BinaryExpressionContext *ct
               throw std::system_error(internal_error::modulo_by_zero);
             else
               result_expression = {true, variable::TYPE::INT32, 0,
-                                   std::get<std::int32_t>(raw_expression_l.value) % std::get<std::int32_t>(raw_expression_r.value)};
+                                   std::get<std::int32_t>(raw_expression_l.value) %
+                                       std::get<std::int32_t>(raw_expression_r.value)};
           }},
          {">=",
           [&] {
             result_expression = {true, variable::TYPE::INT32, 0,
-                                 std::get<std::int32_t>(raw_expression_l.value) >= std::get<std::int32_t>(raw_expression_r.value)};
+                                 std::get<std::int32_t>(raw_expression_l.value) >=
+                                     std::get<std::int32_t>(raw_expression_r.value)};
           }},
          {">",
           [&] {
             result_expression = {true, variable::TYPE::INT32, 0,
-                                 std::get<std::int32_t>(raw_expression_l.value) > std::get<std::int32_t>(raw_expression_r.value)};
+                                 std::get<std::int32_t>(raw_expression_l.value) >
+                                     std::get<std::int32_t>(raw_expression_r.value)};
           }},
          {"<",
           [&] {
             result_expression = {true, variable::TYPE::INT32, 0,
-                                 std::get<std::int32_t>(raw_expression_l.value) < std::get<std::int32_t>(raw_expression_r.value)};
+                                 std::get<std::int32_t>(raw_expression_l.value) <
+                                     std::get<std::int32_t>(raw_expression_r.value)};
           }},
          {"<=",
           [&] {
             result_expression = {true, variable::TYPE::INT32, 0,
-                                 std::get<std::int32_t>(raw_expression_l.value) <= std::get<std::int32_t>(raw_expression_r.value)};
+                                 std::get<std::int32_t>(raw_expression_l.value) <=
+                                     std::get<std::int32_t>(raw_expression_r.value)};
           }},
          {"==",
           [&] {
             result_expression = {true, variable::TYPE::INT32, 0,
-                                 std::get<std::int32_t>(raw_expression_l.value) == std::get<std::int32_t>(raw_expression_r.value)};
+                                 std::get<std::int32_t>(raw_expression_l.value) ==
+                                     std::get<std::int32_t>(raw_expression_r.value)};
           }},
          {"!=",
           [&] {
             result_expression = {true, variable::TYPE::INT32, 0,
-                                 std::get<std::int32_t>(raw_expression_l.value) != std::get<std::int32_t>(raw_expression_r.value)};
+                                 std::get<std::int32_t>(raw_expression_l.value) !=
+                                     std::get<std::int32_t>(raw_expression_r.value)};
           }},
          {"&&",
           [&] {
             result_expression = {true, variable::TYPE::INT32, 0,
-                                 std::get<std::int32_t>(raw_expression_l.value) && std::get<std::int32_t>(raw_expression_r.value)};
+                                 std::get<std::int32_t>(raw_expression_l.value) &&
+                                     std::get<std::int32_t>(raw_expression_r.value)};
           }},
          {"||",
           [&] {
             result_expression = {true, variable::TYPE::INT32, 0,
-                                 std::get<std::int32_t>(raw_expression_l.value) || std::get<std::int32_t>(raw_expression_r.value)};
+                                 std::get<std::int32_t>(raw_expression_l.value) ||
+                                     std::get<std::int32_t>(raw_expression_r.value)};
           }}}},
        {variable::TYPE::FLOAT,
         {{"+",

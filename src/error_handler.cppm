@@ -90,8 +90,8 @@ export template <> struct is_error_code_enum<internal_error> : true_type {};
 export class lgcc_error_listener : public antlr4::base_error_listener {
   std::string m_file_name;
 
-  void syntaxError(antlr4::recognizer *recognizer, antlr4::token *offendingSymbol, std::size_t line, std::size_t charPositionInLine,
-                   const std::string &msg, std::exception_ptr e) override {
+  void syntaxError(antlr4::recognizer *recognizer, antlr4::token *offendingSymbol, std::size_t line,
+                   std::size_t charPositionInLine, const std::string &msg, std::exception_ptr e) override {
     auto error_message{std::format("{}:{}:{}: {}", m_file_name, line, charPositionInLine, msg)};
     throw std::system_error(internal_error::syntax_error, error_message);
   }
