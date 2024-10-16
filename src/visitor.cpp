@@ -589,11 +589,12 @@ std::any visitor::visitConstDefinition(sysy_parser::ConstDefinitionContext *ctx)
   auto identifier_name{std::any_cast<std::string>(visit(ctx->IDENTIFIER()))};
   // TODO: 此处返回的不一定是 expression 类型（加入数组之后）
   auto value{std::any_cast<expression>(visit(ctx->constInitializeValue()))};
-  if (!value.is_const)
-    throw std::system_error(internal_error::expect_const_expression, ctx->getText());
   return std::tuple{identifier_name, value};
 }
 
 std::any visitor::visitConstInitializeValue(sysy_parser::ConstInitializeValueContext *ctx) {
-  return visit(ctx->expression());
+  auto value{std::any_cast<expression>(visit(ctx->expression()))};
+  if (!value.is_const)
+    throw std::system_error(internal_error::expect_const_expression, ctx->getText());
+  return value;
 }
