@@ -65,8 +65,12 @@ public:
   virtual std::any visitIntegerConstantExpression(sysy_parser::IntegerConstantExpressionContext *ctx) override;
   virtual std::any visitFloatingConstantExpression(sysy_parser::FloatingConstantExpressionContext *ctx) override;
   virtual std::any visitBinaryExpression(sysy_parser::BinaryExpressionContext *ctx) override;
+  virtual std::any visitAssignmentStatement(sysy_parser::AssignmentStatementContext *ctx) override;
   virtual std::any visitReturnStatement(sysy_parser::ReturnStatementContext *ctx) override;
   virtual std::any visitConstDeclaration(sysy_parser::ConstDeclarationContext *ctx) override;
   virtual std::any visitConstDefinition(sysy_parser::ConstDefinitionContext *ctx) override;
   virtual std::any visitConstInitializeValue(sysy_parser::ConstInitializeValueContext *ctx) override;
+  virtual std::any visitVariableDeclaration(sysy_parser::VariableDeclarationContext *ctx) override;
+  virtual std::any visitVariableDefinition(sysy_parser::VariableDefinitionContext *ctx) override;
+  virtual std::any visitInitializeValue(sysy_parser::InitializeValueContext *ctx) override;
 };

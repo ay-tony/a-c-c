@@ -153,8 +153,10 @@ std::any visitor::visitLeftValueExpression(sysy_parser::LeftValueExpressionConte
     case variable::TYPE::FLOAT:
       return expression{true, variable::TYPE::FLOAT, 0, std::get<float>(var.value())};
     }
-  } else
-    return defaultResult(); // TODO: 加入对变量的返回
+  } else {
+    pl("%{} = load {}, ptr %{}", new_ir_cnt(), variable::to_string(var.type()), var.ir_cnt());
+    return expression{false, var.type(), m_ir_cnt, {}};
+  }
 }
 
 std::any visitor::visitIntegerConstantExpression(sysy_parser::IntegerConstantExpressionContext *ctx) {
@@ -562,6 +564,16 @@ std::any visitor::visitBinaryExpression(sysy_parser::BinaryExpressionContext *ct
   return result_expression;
 }
 
+std::any visitor::visitAssignmentStatement(sysy_parser::AssignmentStatementContext *ctx) {
+  auto var{std::any_cast<variable>(visit(ctx->leftValue()))};
+  auto value{std::any_cast<expression>(visit(ctx->expression()))};
+
+  value = expression_cast(value, var.type());
+  pl("store {} {}, ptr %{}", variable::to_string(var.type()), value.to_string(), var.ir_cnt());
+
+  return defaultResult();
+}
+
 std::any visitor::visitReturnStatement(sysy_parser::ReturnStatementContext *ctx) {
   auto raw_expression{std::any_cast<expression>(visit(ctx->expression()))};
   auto return_type{resolve_function(m_current_function_name.value()).return_type()};
@@ -598,3 +610,26 @@ std::any visitor::visitConstInitializeValue(sysy_parser::ConstInitializeValueCon
     throw std::system_error(internal_error::expect_const_expression, ctx->getText());
   return value;
 }
+
+std::any visitor::visitVariableDeclaration(sysy_parser::VariableDeclarationContext *ctx) {
+  auto type{variable::to_type(std::any_cast<std::string>(visit(ctx->basicType())))};
+
+  for (auto child : ctx->variableDefinition()) {
+    auto [name, value]{std::any_cast<std::tuple<std::string, expression>>(visit(child))};
+    value = expression_cast(value, type);
+    current_scope().insert_variable(name, {type, new_ir_cnt()});
+    pl("%{} = alloca {}", m_ir_cnt, variable::to_string(type));
+    pl("store {} {}, ptr %{}", variable::to_string(type), value.to_string(), m_ir_cnt);
+  }
+
+  return defaultResult();
+}
+
+std::any visitor::visitVariableDefinition(sysy_parser::VariableDefinitionContext *ctx) {
+  auto identifier_name{std::any_cast<std::string>(visit(ctx->IDENTIFIER()))};
+  // TODO: 此处返回的不一定是 expression 类型（加入数组之后）
+  auto value{std::any_cast<expression>(visit(ctx->initializeValue()))};
+  return std::tuple{identifier_name, value};
+}
+
+std::any visitor::visitInitializeValue(sysy_parser::InitializeValueContext *ctx) { return visit(ctx->expression()); }

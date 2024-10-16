@@ -48,7 +48,7 @@ blockItem:
     | statement;
 
 statement:
-    leftValue '=' expression ';'                            # assignmentStatmenet
+    leftValue '=' expression ';'                            # assignmentStatement
     | expression? ';'                                       # expressionStatement
     | block                                                 # blockStatement
     | 'if' '(' expression ')' statement ('else' statement)? # ifStatement
