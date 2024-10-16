@@ -18,6 +18,7 @@ export enum class internal_error {
   syntax_error,
   divide_by_zero,
   modulo_by_zero,
+  expect_const_expression,
   failed
 };
 
@@ -53,6 +54,8 @@ export std::error_code make_error_code(internal_error e) noexcept {
         return "Divide by zero";
       case internal_error::modulo_by_zero:
         return "Modulo by zero";
+      case internal_error::expect_const_expression:
+        return "Const expression expected, but non-const found";
       case internal_error::failed:
         return "Failed";
       default:

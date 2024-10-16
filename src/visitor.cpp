@@ -535,7 +535,6 @@ std::any visitor::visitBinaryExpression(sysy_parser::BinaryExpressionContext *ct
             result_expression = {true, variable::TYPE::INT32, 0,
                                  std::get<float>(raw_expression_l.value) || std::get<float>(raw_expression_r.value)};
           }}}}}};
-
   if (auto search{operations[result_expression.is_const][common_type].find(op)};
       search != operations[result_expression.is_const][common_type].end())
     search->second();
@@ -550,9 +549,35 @@ std::any visitor::visitReturnStatement(sysy_parser::ReturnStatementContext *ctx)
   auto return_type{resolve_function(m_current_function_name.value()).return_type()};
   if (return_type != function::TYPE::VOID) {
     auto target_type = function::to_variable_type(return_type);
-    if (target_type != raw_expression.type)
-      raw_expression = expression_cast(raw_expression, target_type);
+    raw_expression = expression_cast(raw_expression, target_type);
     pl("ret {} {}", variable::to_string(target_type), raw_expression.to_string());
   }
   return defaultResult();
+}
+
+std::any visitor::visitConstDeclaration(sysy_parser::ConstDeclarationContext *ctx) {
+  auto type{variable::to_type(std::any_cast<std::string>(visit(ctx->basicType())))};
+
+  for (auto child : ctx->constDefinition()) {
+    auto [name, value]{std::any_cast<std::tuple<std::string, expression>>(visit(child))};
+    value = expression_cast(value, type);
+    current_scope().insert_variable(name, {new_ir_cnt(), type, true});
+    pl("%{} = alloca {}", m_ir_cnt, variable::to_string(type));
+    pl("store {} {}, ptr %{}", variable::to_string(type), value.to_string(), m_ir_cnt);
+  }
+
+  return defaultResult();
+}
+
+std::any visitor::visitConstDefinition(sysy_parser::ConstDefinitionContext *ctx) {
+  auto identifier_name{std::any_cast<std::string>(visit(ctx->IDENTIFIER()))};
+  // TODO: 此处返回的不一定是 expression 类型（加入数组之后）
+  auto value{std::any_cast<expression>(visit(ctx->constInitializeValue()))};
+  if (!value.is_const)
+    throw std::system_error(internal_error::expect_const_expression, ctx->getText());
+  return std::tuple{identifier_name, value};
+}
+
+std::any visitor::visitConstInitializeValue(sysy_parser::ConstInitializeValueContext *ctx) {
+  return visit(ctx->expression());
 }
