@@ -536,5 +536,3 @@ std::any visitor::visitReturnStatement(sysy_parser::ReturnStatementContext *ctx)
   }
   return defaultResult();
 }
-
-// TODO: 检查 sext
