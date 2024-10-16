@@ -73,11 +73,11 @@ visitor::expression visitor::expression_cast(expression raw_expression, variable
     std::unordered_map<variable::TYPE, std::function<void()>> const_operations{
         {variable::TYPE::INT32,
          [&] {
-           pl("%{} = add i32 0, {}", new_ir_cnt(), std::get<std::int32_t>(result_expression.value));
+           pl("%{} = add i32 0, {}", new_ir_cnt(), result_expression.to_string());
            result_expression = {false, variable::TYPE::INT32, m_ir_cnt, {}};
          }},
         {variable::TYPE::FLOAT, [&] {
-           pl("%{} = fadd float 0., {}", new_ir_cnt(), std::get<float>(result_expression.value));
+           pl("%{} = fadd float 0., {}", new_ir_cnt(), result_expression.to_string());
            result_expression = {false, variable::TYPE::FLOAT, m_ir_cnt, {}};
          }}};
     const_operations[result_expression.type]();
