@@ -67,12 +67,12 @@ expression:
     | IDENTIFIER '(' functionArguments? ')'                         # functionExpression
     | '(' expression ')'                                            # braceExpression
     | (op='+'|op='-'|op='!') expression                             # unaryExpression
-    | lhs=expression (op='*'|op='/'|op='%') rhs=expression          # binaryExpression
-    | lhs=expression (op='+'|op='-') rhs=expression                 # binaryExpression
-    | lhs=expression op='&&' rhs=expression                         # binaryExpression
-    | lhs=expression op='||' rhs=expression                         # binaryExpression
-    | lhs=expression (op='<'|op='>'|op='<='|op='>=') rhs=expression # binaryExpression
-    | lhs=expression (op='=='|op='!=') rhs=expression               # binaryExpression;
+    | lhs=expression (op='*'|op='/'|op='%') rhs=expression          # binaryArithmeticExpression
+    | lhs=expression (op='+'|op='-') rhs=expression                 # binaryArithmeticExpression
+    | lhs=expression op='&&' rhs=expression                         # binaryLogicExpression
+    | lhs=expression op='||' rhs=expression                         # binaryLogicExpression
+    | lhs=expression (op='<'|op='>'|op='<='|op='>=') rhs=expression # binaryRelationExpression
+    | lhs=expression (op='=='|op='!=') rhs=expression               # binaryRelationExpression;
 
 functionArguments:
     expression (',' expression)*;

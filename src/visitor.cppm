@@ -10,6 +10,7 @@ private:
   std::size_t m_indent{};
   std::string m_ir{};
   variable::ir_cnt_t m_ir_cnt{};
+  std::size_t m_label_cnt{};
   std::optional<std::string> m_current_function_name;
   std::vector<scope> m_scopes{1};
 
@@ -29,6 +30,7 @@ private:
   template <class... Args> void pl(std::format_string<Args...> fmt, Args &&...args);
 
   variable::ir_cnt_t new_ir_cnt() { return ++m_ir_cnt; };
+  std::string new_label() { return std::format("label_{}", ++m_label_cnt); }
 
   scope &current_scope() { return m_scopes.back(); }
   variable resolve_variable(const std::string &name);
@@ -52,7 +54,9 @@ public:
   virtual std::any visitUnaryExpression(sysy_parser::UnaryExpressionContext *ctx) override;
   virtual std::any visitIntegerConstantExpression(sysy_parser::IntegerConstantExpressionContext *ctx) override;
   virtual std::any visitFloatingConstantExpression(sysy_parser::FloatingConstantExpressionContext *ctx) override;
-  virtual std::any visitBinaryExpression(sysy_parser::BinaryExpressionContext *ctx) override;
+  virtual std::any visitBinaryArithmeticExpression(sysy_parser::BinaryArithmeticExpressionContext *ctx) override;
+  virtual std::any visitBinaryLogicExpression(sysy_parser::BinaryLogicExpressionContext *ctx) override;
+  virtual std::any visitBinaryRelationExpression(sysy_parser::BinaryRelationExpressionContext *ctx) override;
 
   virtual std::any visitExpressionStatement(sysy_parser::ExpressionStatementContext *ctx) override;
   virtual std::any visitBlockStatement(sysy_parser::BlockStatementContext *ctx) override;
