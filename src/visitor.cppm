@@ -22,6 +22,7 @@ private:
     std::variant<std::int32_t, float> value; // valid only const
 
     std::string to_string();
+    expression to_i1(this expression &&self, visitor &vis);
   };
 
 private:
@@ -62,6 +63,7 @@ public:
   virtual std::any visitBlockStatement(sysy_parser::BlockStatementContext *ctx) override;
   virtual std::any visitAssignmentStatement(sysy_parser::AssignmentStatementContext *ctx) override;
   virtual std::any visitReturnStatement(sysy_parser::ReturnStatementContext *ctx) override;
+  virtual std::any visitIfStatement(sysy_parser::IfStatementContext *ctx) override;
 
   virtual std::any visitConstDeclaration(sysy_parser::ConstDeclarationContext *ctx) override;
   virtual std::any visitConstDefinition(sysy_parser::ConstDefinitionContext *ctx) override;

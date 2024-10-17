@@ -16,6 +16,25 @@ std::string visitor::expression::to_string() {
     return std::format("%{}", ir_cnt);
 }
 
+visitor::expression visitor::expression::to_i1(this expression &&self, visitor &vis) {
+  if (self.is_const)
+    switch (self.type) {
+    case variable::TYPE::INT32:
+      return {true, variable::TYPE::INT32, 0, std::get<std::int32_t>(self.value) != 0};
+    case variable::TYPE::FLOAT:
+      return {true, variable::TYPE::INT32, 0, std::get<float>(self.value) != 0};
+    }
+  else
+    switch (self.type) {
+    case variable::TYPE::INT32:
+      vis.pl("%{} = icmp ne i32 {}, 0", vis.new_ir_cnt(), self.to_string());
+      return {false, variable::TYPE::INT32, vis.m_ir_cnt, {}};
+    case variable::TYPE::FLOAT:
+      vis.pl("%{} = fcmp one float {}, 0.", vis.new_ir_cnt(), self.to_string());
+      return {false, variable::TYPE::INT32, vis.m_ir_cnt, {}};
+    }
+}
+
 void visitor::pd() {
   for (std::size_t i = 0; i < m_indent; i++)
     m_ir += "    ";
@@ -381,26 +400,8 @@ std::any visitor::visitBinaryArithmeticExpression(sysy_parser::BinaryArithmeticE
 }
 
 std::any visitor::visitBinaryLogicExpression(sysy_parser::BinaryLogicExpressionContext *ctx) {
-  auto to_i1{[&](expression exp) -> expression {
-    if (exp.is_const)
-      switch (exp.type) {
-      case variable::TYPE::INT32:
-        return {true, variable::TYPE::INT32, 0, std::get<std::int32_t>(exp.value) != 0};
-      case variable::TYPE::FLOAT:
-        return {true, variable::TYPE::INT32, 0, std::get<float>(exp.value) != 0};
-      }
-    else
-      switch (exp.type) {
-      case variable::TYPE::INT32:
-        pl("%{} = icmp ne i32, {}, 0", new_ir_cnt(), exp.to_string());
-        return {false, variable::TYPE::INT32, m_ir_cnt, {}};
-      case variable::TYPE::FLOAT:
-        pl("%{} = fcmp one float, {}, 0.", new_ir_cnt(), exp.to_string());
-        return {false, variable::TYPE::INT32, m_ir_cnt, {}};
-      }
-  }};
 
-  auto raw_expression_l{to_i1(std::any_cast<expression>(visit(ctx->lhs)))};
+  auto raw_expression_l{std::any_cast<expression>(visit(ctx->lhs)).to_i1(*this)};
   auto op{ctx->op->getText()};
   auto result_expression{expression{}};
 
@@ -415,7 +416,7 @@ std::any visitor::visitBinaryLogicExpression(sysy_parser::BinaryLogicExpressionC
            auto tmp_ir_cnt{new_ir_cnt()};
            auto label_true{new_label()}, label_false{new_label()}, label_end{new_label()};
 
-           pl("br i1 %{}, label {}, label {}", raw_expression_l.to_string(), label_true, label_false);
+           pl("br i1 %{}, label %{}, label %{}", raw_expression_l.to_string(), label_true, label_false);
            pl("");
 
            pl("{}:", label_true);
@@ -424,9 +425,9 @@ std::any visitor::visitBinaryLogicExpression(sysy_parser::BinaryLogicExpressionC
            pl("");
 
            pl("{}:", label_false);
-           auto raw_expression_r{to_i1(std::any_cast<expression>(visit(ctx->rhs)))};
+           auto raw_expression_r{std::any_cast<expression>(visit(ctx->rhs)).to_i1(*this)};
            pl("%{} = or i1 {}, {}", tmp_ir_cnt, raw_expression_l.to_string(), raw_expression_r.to_string());
-           pl("br label {}", label_end);
+           pl("br label %{}", label_end);
            pl("");
 
            pl("{}:", label_end);
@@ -444,18 +445,18 @@ std::any visitor::visitBinaryLogicExpression(sysy_parser::BinaryLogicExpressionC
            auto tmp_ir_cnt{new_ir_cnt()};
            auto label_true{new_label()}, label_false{new_label()}, label_end{new_label()};
 
-           pl("br i1 %{}, label {}, label {}", raw_expression_l.to_string(), label_true, label_false);
+           pl("br i1 %{}, label %{}, label %{}", raw_expression_l.to_string(), label_true, label_false);
            pl("");
 
            pl("{}:", label_true);
            pl("%{} = or i1 0, %{}", tmp_ir_cnt, raw_expression_l.to_string());
-           pl("br label {}", label_end);
+           pl("br label %{}", label_end);
            pl("");
 
            pl("{}:", label_false);
-           auto raw_expression_r{to_i1(std::any_cast<expression>(visit(ctx->rhs)))};
+           auto raw_expression_r{std::any_cast<expression>(visit(ctx->rhs)).to_i1(*this)};
            pl("%{} = and i1 {}, {}", tmp_ir_cnt, raw_expression_l.to_string(), raw_expression_r.to_string());
-           pl("br label {}", label_end);
+           pl("br label %{}", label_end);
            pl("");
 
            pl("{}:", label_end);
@@ -668,6 +669,39 @@ std::any visitor::visitReturnStatement(sysy_parser::ReturnStatementContext *ctx)
     raw_expression = expression_cast(raw_expression, target_type);
     pl("ret {} {}", variable::to_string(target_type), raw_expression.to_string());
   }
+  return defaultResult();
+}
+
+std::any visitor::visitIfStatement(sysy_parser::IfStatementContext *ctx) {
+  bool have_else{ctx->statement().size() == 2};
+  auto exp{std::any_cast<expression>(visit(ctx->expression())).to_i1(*this)};
+
+  if (exp.is_const) {
+    if (std::get<std::int32_t>(exp.value))
+      visit(ctx->statement(0));
+    else if (!std::get<std::int32_t>(exp.value) && have_else)
+      visit(ctx->statement(1));
+  } else {
+    auto label_true{new_label()}, label_false{have_else ? new_label() : ""}, label_end{new_label()};
+
+    pl("br i1 {}, label %{}, label %{}", exp.to_string(), label_true, have_else ? label_false : label_end);
+    pl("");
+
+    pl("{}:", label_true);
+    visit(ctx->statement(0));
+    pl("br label %{}", label_end);
+    pl("");
+
+    if (have_else) {
+      pl("{}:", label_false);
+      visit(ctx->statement(1));
+      pl("br label %{}", label_end);
+      pl("");
+    }
+
+    pl("{}:", label_end);
+  }
+
   return defaultResult();
 }
 
