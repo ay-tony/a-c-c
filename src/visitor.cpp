@@ -144,6 +144,14 @@ std::any visitor::visitLeftValue(sysy_parser::LeftValueContext *ctx) {
   return resolve_variable(std::any_cast<std::string>(visit(ctx->IDENTIFIER())));
 }
 
+std::any visitor::visitBlock(sysy_parser::BlockContext *ctx) {
+  m_scopes.push_back(scope()); // TODO: 这里报错可能是因为编译器原因导致的，等待更新编译器
+  for (auto item : ctx->blockItem())
+    visit(item);
+  m_scopes.pop_back();
+  return defaultResult();
+}
+
 std::any visitor::visitLeftValueExpression(sysy_parser::LeftValueExpressionContext *ctx) {
   auto var{std::any_cast<variable>(visit(ctx->leftValue()))};
   if (var.is_const())
@@ -557,6 +565,16 @@ std::any visitor::visitBinaryExpression(sysy_parser::BinaryExpressionContext *ct
     throw std::system_error(internal_error::unrecognized_operator, op);
 
   return result_expression;
+}
+
+std::any visitor::visitExpressionStatement(sysy_parser::ExpressionStatementContext *ctx) {
+  visit(ctx->expression()); // TODO: 测试如果没有 expression 会怎么样，即空语句
+  return defaultResult();
+}
+
+std::any visitor::visitBlockStatement(sysy_parser::BlockStatementContext *ctx) {
+  visit(ctx->block());
+  return defaultResult();
 }
 
 std::any visitor::visitAssignmentStatement(sysy_parser::AssignmentStatementContext *ctx) {

@@ -59,14 +59,20 @@ public:
   virtual std::any visitFunctionDefinition(sysy_parser::FunctionDefinitionContext *ctx) override;
   virtual std::any visitTerminal(antlr4::tree::terminal_node *ctx) override;
   virtual std::any visitLeftValue(sysy_parser::LeftValueContext *ctx) override;
+  virtual std::any visitBlock(sysy_parser::BlockContext *ctx) override;
+
   virtual std::any visitLeftValueExpression(sysy_parser::LeftValueExpressionContext *ctx) override;
   virtual std::any visitBraceExpression(sysy_parser::BraceExpressionContext *ctx) override;
   virtual std::any visitUnaryExpression(sysy_parser::UnaryExpressionContext *ctx) override;
   virtual std::any visitIntegerConstantExpression(sysy_parser::IntegerConstantExpressionContext *ctx) override;
   virtual std::any visitFloatingConstantExpression(sysy_parser::FloatingConstantExpressionContext *ctx) override;
   virtual std::any visitBinaryExpression(sysy_parser::BinaryExpressionContext *ctx) override;
+
+  virtual std::any visitExpressionStatement(sysy_parser::ExpressionStatementContext *ctx) override;
+  virtual std::any visitBlockStatement(sysy_parser::BlockStatementContext *ctx) override;
   virtual std::any visitAssignmentStatement(sysy_parser::AssignmentStatementContext *ctx) override;
   virtual std::any visitReturnStatement(sysy_parser::ReturnStatementContext *ctx) override;
+
   virtual std::any visitConstDeclaration(sysy_parser::ConstDeclarationContext *ctx) override;
   virtual std::any visitConstDefinition(sysy_parser::ConstDefinitionContext *ctx) override;
   virtual std::any visitConstInitializeValue(sysy_parser::ConstInitializeValueContext *ctx) override;
