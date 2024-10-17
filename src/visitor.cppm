@@ -20,21 +20,7 @@ private:
     variable::ir_cnt_t ir_cnt;               // valid only non-const
     std::variant<std::int32_t, float> value; // valid only const
 
-    std::string to_string() {
-      if (is_const)
-        switch (type) {
-        case variable::TYPE::INT32:
-          return std::format("{}", std::get<std::int32_t>(value));
-        case variable::TYPE::FLOAT:
-          union union_val {
-            std::uint64_t val_i;
-            double val_f;
-          } tmp_value{.val_f = std::get<float>(value)};
-          return std::format("0x{:x}", tmp_value.val_i);
-        }
-      else
-        return std::format("%{}", ir_cnt);
-    }
+    std::string to_string();
   };
 
 private:
